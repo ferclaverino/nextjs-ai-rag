@@ -2,6 +2,7 @@ import { createResource } from "@/lib/actions/resources";
 import { openai } from "@ai-sdk/openai";
 import { streamText, tool } from "ai";
 import { z } from "zod";
+import { findRelevantContent } from "@/lib/ai/embedding";
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
@@ -11,9 +12,14 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: openai("gpt-4o"),
-    system: `You are a helpful assistant. Check your knowledge base before answering any questions.
-    Only respond to questions using information from tool calls.
-    if no relevant information is found in the tool calls, respond, "Sorry, I don't know."`,
+    // system: `You are a helpful assistant.
+    // Check your knowledge base before answering any questions.
+    // Only respond to questions using information from tool calls.
+    // if no relevant information is found in the tool calls, respond, "Sorry, I don't know."`,
+    system: `You are a helpful assistant.
+      Always use the 'getInformation' tool to check for relevant information in the knowledge base when answering any questions.
+      Do not attempt to answer questions directly without first using the tools.
+      If no relevant information is found, respond with: "Sorry, I don't know."`,
     messages,
     tools: {
       addResource: tool({
@@ -25,6 +31,15 @@ export async function POST(req: Request) {
             .describe("the content or resource to add to the knowledge base"),
         }),
         execute: async ({ content }) => createResource({ content }),
+      }),
+      getInformation: tool({
+        // description: `get information from your knowledge base to answer questions.`,
+        description: `Retrieve relevant information from your knowledge base to answer any questions.
+          Use this tool whenever the user asks a question or requests information.`,
+        parameters: z.object({
+          question: z.string().describe("the users question"),
+        }),
+        execute: async ({ question }) => findRelevantContent(question),
       }),
     },
   });
